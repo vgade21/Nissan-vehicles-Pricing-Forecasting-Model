@@ -1,0 +1,953 @@
+---
+title: "macro factors 2"
+author: "Vamshi Gadepally"
+date: "2023-05-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Import Libraries}
+library(fpp)
+library(TSA)
+library(tseries)
+library(ggplot2)
+library(forecast)
+library(caret)
+library(lubridate)
+library(dplyr)
+library(AICcmodavg)
+library(vars)
+```
+
+```{r Q1}
+# loading the data
+data <- read.csv("C:\\Users\\vamsh\\Documents\\Uni\\UChicago\\Summer 2023\\MSCA 34003_IP01 - Capstone II\\Project\\Data\\Macro Factors\\merged_table_final_filtered_Products.csv")
+```
+
+
+#########
+### Time series analysis on Macro factor data
+#########
+
+
+```{r Q1}
+# # Check for missing values
+# missing_values <- sapply(data, function(x) sum(is.na(x)))
+# missing_values_data <- data.frame(Variable = names(data), Missing_Values = missing_values)
+# missing_values_data # No missing values
+```
+
+```{r Q1}
+# # tsdisplay(data$Average_MSRP_spec)
+# # tsdisplay(data$Semi_Price_Index)
+# tsdisplay(data$WPU03THRU15_Price_Index)
+# # tsdisplay(data$WPU10_Price_Index)
+# # tsdisplay(data$WPU1017_Price_Index)
+```
+
+```{r Q6}
+# Creating a copy for EDA
+data_2<-data.frame(data)
+```
+
+```{r Q1}
+# Splitting the data into training and testing sets
+# Note: this it the data that wasn't detrended / deseasonalized or transformed
+
+# Train/Test Split
+data_2$DATE <- as.Date(paste0(data_2$DATE, "-01"))
+data_3 <- subset(data_2, select = c("DATE", "Semi_Price_Index", "WPU03THRU15_Price_Index", "WPU10_Price_Index", "WPU1017_Price_Index"))
+
+# # Create the train dataframe (May to August 2018)
+# train_start <- as.Date("2013-01-01")
+# train_end <- as.Date("2019-09-01")
+# train_df <- subset(data_3, DATE >= train_start & DATE <= train_end)
+# 
+# # Create the test dataframe (September 2018)
+# test_start <- as.Date("2019-10-01")
+# test_end <- as.Date("2021-06-01")
+# test_df <- subset(data_3, DATE >= test_start & DATE <= test_end)
+
+# Create the train dataframe (Jan 2013 to Sep 2021) - 105 months
+train_start <- as.Date("2013-01-01")
+train_end <- as.Date("2021-09-01")
+train_df <- subset(data_3, DATE >= train_start & DATE <= train_end)
+
+# Create the test dataframe (Oct 2021 to Mar 2023) - 18 months
+test_start <- as.Date("2021-10-01")
+test_end <- as.Date("2023-03-01")
+test_df <- subset(data_3, DATE >= test_start & DATE <= test_end)
+```
+
+```{r Q1}
+# converting split data sets to time series objects
+train_ts <- ts(train_df$WPU03THRU15_Price_Index)
+test_ts <- ts(test_df$WPU03THRU15_Price_Index)
+tsdisplay(train_ts)
+```
+
+```{r Q1}
+# # Augmented Dickey-Fuller Test
+# adf.test(train_ts) # Appears to be non-stationary
+```
+
+The p-value (0.7398) is greater than the significance level (0.05) for WPU03THRU15_Price_Index
+Which means we fail to reject the null hypothesis, and the time series is non-stationary.
+In other words it has some time-dependent structure and does not have constant variance over time.
+
+```{r Q1}
+# # KPSS test
+# kpss.test(train_ts, null = c("Level", "Trend"), lshort = TRUE) # Appears to be non-stationary
+```
+
+The p-value is 0.01.
+Since this value is less than .05 so there's evidence to reject the null hypothesis in favor of the alternative hypothesis. 
+In this case the time series is considered non-stationary.
+
+```{r Q1}
+# # plotting the time series data
+# tsdisplay(train_ts, main = 'WPU03THRU15_Price_Index (training set) Jan 2013 - Sep 2019', xlab = 'Time') 
+# # there is no clear seasonality present in the Average_MSRP_spec data
+```
+
+```{r Q1}
+# lambda_value = BoxCox.lambda(train_ts)
+# lambda_value # 1.999924
+# 
+# # Lambda < 0: Indicates a reciprocal transformation (1/x) or a negative power transformation.
+# # Lambda close to 0: Indicates a logarithmic transformation (log(x)).
+# # Lambda close to 1: Indicates no transformation or a linear transformation (x).
+# # Lambda close to 2: Indicates a square transformation (x^2) or a quadratic relationship.
+```
+
+```{r Q13}
+# Plotting the Box-Cox Transformed time series with the best lambda
+# train_ts_trans <- BoxCox(train_ts, lambda_value)
+# tsdisplay(train_ts_trans, main = 'Box-Cox Transformation WPU03THRU15_Price_Index with 𝝀= 1.999924', xlab = 'Time') 
+```
+
+The BoxCox.lambda() function proposed an appropriate lambda value for the data, which is close to 2.
+This means the original data did require a Box Cox transformation, suggesting the original data did 
+have certain changes (increase or decrease) in variation with the level of the time series.
+As per plots, the impact of the transformation on the data is negligible so it's not needed.
+
+```{r Q14}
+# # 1st Differencing (𝒅 = 𝟏)
+# tsdisplay(diff(train_ts), main = '1st Differencing of WPU03THRU15_Price_Index', xlab = 'Time') 
+# # 1st order Differencing is required
+```
+
+```{r Q1}
+# # Augmented Dickey-Fuller Test
+# adf.test(diff(train_ts)) # Appears to be stationary now
+```
+
+```{r Q1}
+# # KPSS test
+# kpss.test(diff(train_ts), null = c("Level", "Trend"), lshort = TRUE) # Appears to be stationary now
+```
+
+```{r}
+# Multivariate linear regression with all variables
+WPU03THRU15_Price_Index <- train_ts
+
+Semi_Price_Index <- train_df[,"Semi_Price_Index"]
+WPU10_Price_Index <- train_df[,"WPU10_Price_Index"]
+WPU1017_Price_Index <- train_df[,"WPU1017_Price_Index"]
+
+# Fit a linear model
+lin_model <- tslm(WPU03THRU15_Price_Index ~ Semi_Price_Index + WPU10_Price_Index + WPU1017_Price_Index)
+summary(lin_model)
+pacf(lin_model$residuals)
+```
+
+```{r Q1}
+# SARIMA/ARIMA with multiple regression errors
+WPU03THRU15_Price_Index <- train_ts
+exogenous <- train_df[, c("Semi_Price_Index", "WPU10_Price_Index", "WPU1017_Price_Index")]
+# Convert the exogenous variables to a matrix
+exogenous_matrix <- as.matrix(exogenous)
+
+# Fit the auto.arima model with xreg
+ARIMAX_model<- auto.arima(WPU03THRU15_Price_Index, xreg = exogenous_matrix) 
+summary(ARIMAX_model)
+pacf(ARIMAX_model$residuals)
+```
+
+```{r Q5}
+# Vector Autogressive Model
+train_ts_2 <- ts(train_df[, -1])
+test_ts_2 <- ts(test_df[, -1])
+# Determine the optimal lag order using the 'VARselect' function
+max_lag <- 10  # Maximum lag order to consider
+var_select <- VARselect(train_ts_2, lag.max = max_lag, type = "both")
+# Get the optimal lag order based on AIC
+lag_order <- var_select$selection[1]
+# Fit the VAR model
+var_model <- VAR(train_ts_2, p = lag_order, type = "both")
+summary(var_model)
+# Note: checkresiduals() function is only for univariate time series models
+```
+
+```{r Q5}
+#Preparing xreg variables
+xreg_vars <- test_df[, c("Semi_Price_Index", "WPU10_Price_Index", "WPU1017_Price_Index")]
+xreg_vars <- as.matrix(xreg_vars[,1:3])
+
+#Forecasting
+fit_forecast_ARIMAX <- forecast(ARIMAX_model, xreg= xreg_vars ,h=length(test_ts))
+fit_forecast_lin <- forecast(lin_model, h=length(test_ts), newdata = data.frame(test_df))
+fit_forecast_VAR <- forecast(var_model, h=length(test_ts), newdata = data.frame(test_df[, -1]))
+```
+
+```{r Q27}
+data_forecast_ARIMAX <- data.frame(Time = test_df$DATE,
+                   Actual = test_df$WPU03THRU15_Price_Index,
+                   Forecasted = fit_forecast_ARIMAX)
+
+data_forecast_lin <- data.frame(Time = test_df$DATE,
+                   Actual = test_df$WPU03THRU15_Price_Index,
+                   Forecasted = fit_forecast_lin)
+
+data_forecast_VAR <- data.frame(Time = test_df$DATE,
+                   Actual = test_df$WPU03THRU15_Price_Index,
+                   Forecasted = fit_forecast_VAR$forecast$WPU03THRU15_Price_Index)
+```
+
+```{r Q27}
+# Plot the forecasted vs. actual values for Linear model
+ggplot(data_forecast_lin, aes(Time)) +
+  geom_ribbon(aes(ymin = Forecasted.Lo.95, ymax = Forecasted.Hi.95),
+              fill = "#BFD4E9", alpha = 0.5) +
+  geom_ribbon(aes(ymin = Forecasted.Lo.80, ymax = Forecasted.Hi.80),
+              fill = "#9FC5E8", alpha = 0.5) +
+  geom_line(aes(y = Actual, color = "Actual")) +
+  geom_line(aes(y = Forecasted.Point.Forecast, color = "Forecasted")) +
+  labs(x = "Time", y = "WPU03THRU15_Price_Index") +
+  scale_color_manual(values = c(Actual = "red", Forecasted = "blue")) +
+  theme_minimal() + ggtitle("18 Month Forecast vs. Actual Values for Linear model")
+```
+
+```{r Q27}
+# Accuracy for 18 Month - Linear model
+forecast::accuracy(fit_forecast_lin, test_df$WPU03THRU15_Price_Index) %>% round(4)
+```
+
+```{r Q27}
+# residual plot for Linear model
+checkresiduals(lin_model)
+```
+
+The Ljung-Box tests for the presence of residual autocorrelation. The test resulted in a p-value of greater than 0.05, 
+indicating no evidence of autocorrelation. 
+Also when we examine the residual plot, we observe no significant spikes in the Autocorrelation Function (ACF) at any lags. 
+Spikes indicate residual patterns that are not accounted for by the model. Model adequately captures patterns in the data.
+
+```{r Q27}
+# Plot the forecasted vs. actual values for ARIMAX model
+ggplot(data_forecast_ARIMAX, aes(Time)) +
+  geom_ribbon(aes(ymin = Forecasted.Lo.95, ymax = Forecasted.Hi.95),
+              fill = "#BFD4E9", alpha = 0.5) +
+  geom_ribbon(aes(ymin = Forecasted.Lo.80, ymax = Forecasted.Hi.80),
+              fill = "#9FC5E8", alpha = 0.5) +
+  geom_line(aes(y = Actual, color = "Actual")) +
+  geom_line(aes(y = Forecasted.Point.Forecast, color = "Forecasted")) +
+  labs(x = "Time", y = "WPU03THRU15_Price_Index") +
+  scale_color_manual(values = c(Actual = "red", Forecasted = "blue")) +
+  theme_minimal() + ggtitle("18 Month Forecast vs. Actual Values for ARIMAX model")
+```
+
+```{r Q27}
+# Accuracy for 18 Month - ARIMAX model
+forecast::accuracy(fit_forecast_ARIMAX, test_df$WPU03THRU15_Price_Index) %>% round(4)
+```
+
+```{r Q27}
+# residual plot for ARIMAX model
+checkresiduals(ARIMAX_model)
+```
+
+The Ljung-Box test resulted in a p-value of greater than 0.05 for this model too, indicating no evidence of autocorrelation. 
+Also when we examine the residual plot, we observe no significant spikes in the Autocorrelation Function (ACF) at any lags. 
+Model adequately captures patterns in the data.
+
+```{r Q27}
+# Plot the forecasted vs. actual values for VAR model
+ggplot(data_forecast_VAR, aes(Time)) +
+  geom_ribbon(aes(ymin = Forecasted.Lo.95, ymax = Forecasted.Hi.95),
+              fill = "#BFD4E9", alpha = 0.5) +
+  geom_ribbon(aes(ymin = Forecasted.Lo.80, ymax = Forecasted.Hi.80),
+              fill = "#9FC5E8", alpha = 0.5) +
+  geom_line(aes(y = Actual, color = "Actual")) +
+  geom_line(aes(y = Forecasted.Point.Forecast, color = "Forecasted")) +
+  labs(x = "Time", y = "WPU03THRU15_Price_Index") +
+  scale_color_manual(values = c(Actual = "red", Forecasted = "blue")) +
+  theme_minimal() + ggtitle("18 Month Forecast vs. Actual Values for VAR model")
+```
+
+```{r Q27}
+# Accuracy for 18 Month - Linear model
+forecast::accuracy(fit_forecast_VAR$forecast$WPU03THRU15_Price_Index, test_df$WPU03THRU15_Price_Index) %>% round(4)
+```
+
+```{r}
+# # Saving model and loading for later use
+# saveRDS(lin_model, "./lin_model_Time_Series.rds")
+# # lin_model <- readRDS("lin_model_Time_Series.rds")
+# 
+# saveRDS(ARIMAX_model, "./ARIMAX_model_Time_Series.rds")
+# # ARIMAX_model <- readRDS("ARIMAX_model_Time_Series.rds")
+# 
+# saveRDS(var_model, "./var_model_Time_Series.rds")
+# # var_model <- readRDS("lin_model_Time_Series.rds")
+```
+
+
+#########
+### Regression analysis on Macro factor data
+#########
+
+
+```{r Q27}
+# Create the random seed number for reproducible results
+seedNum <- 888
+control <- trainControl(method="repeatedcv", number=10, repeats=1)
+```
+
+### Generating models using linear algorithms
+```{r LR}
+# Linear Regression (Regression)
+set.seed(seedNum)
+# Run algorithms using 10-fold cross validation
+fit.lm <- train(WPU03THRU15_Price_Index~., data=train_df[, -1], method="lm", metric="RMSE", trControl=control)
+print(fit.lm)
+summary(fit.lm)
+checkresiduals(fit.lm)
+```
+
+```{r RIDGE}
+# Ridge (Regression)
+set.seed(seedNum)
+fit.ridge <- train(WPU03THRU15_Price_Index~., data=train_df[, -1], method="ridge", metric="RMSE", trControl=control)
+print(fit.ridge)
+summary(fit.ridge)
+checkresiduals(fit.ridge)
+```
+
+
+```{r LASSO}
+# The Lasso (Regression)
+set.seed(seedNum)
+fit.lasso <- train(WPU03THRU15_Price_Index~., data=train_df[, -1], method="lasso", metric="RMSE", trControl=control)
+print(fit.lasso)
+summary(fit.lasso)
+checkresiduals(fit.lasso)
+```
+
+```{r ENET}
+# ElasticNet Regression
+set.seed(seedNum)
+fit.enet <- train(WPU03THRU15_Price_Index~., data=train_df[, -1], method="enet", metric="RMSE", trControl=control)
+print(fit.enet)
+summary(fit.enet)
+checkresiduals(fit.enet)
+```
+
+### Generating models using nonlinear algorithms
+
+```{r CART}
+# Decision Tree - CART (Regression/Classification)
+set.seed(seedNum)
+fit.cart <- train(WPU03THRU15_Price_Index~., data=train_df[, -1], method="rpart", metric="RMSE", trControl=control)
+print(fit.cart)
+summary(fit.cart)
+checkresiduals(fit.cart)
+```
+
+### Generating models using ensemble algorithms
+We can tune these algorithms to see whether we can improve the results.
+
+```{r BAGCART}
+# Bagged CART (Regression/Classification)
+set.seed(seedNum)
+fit.bagcart <- train(WPU03THRU15_Price_Index~., data=train_df[, -1], method="treebag", metric="RMSE", trControl=control)
+print(fit.bagcart)
+summary(fit.bagcart)
+checkresiduals(fit.bagcart)
+```
+
+```{r RF}
+# Random Forest (Regression/Classification)
+set.seed(seedNum)
+fit.rf <- train(WPU03THRU15_Price_Index~., data=train_df[, -1], method="rf", metric="RMSE", trControl=control)
+print(fit.rf)
+summary(fit.rf)
+checkresiduals(fit.rf)
+```
+
+```{r GBM}
+# Gradient Boosting (Regression/Classification)
+set.seed(seedNum)
+fit.gbm <- train(WPU03THRU15_Price_Index~., data=train_df[, -1], method="xgbTree", metric="RMSE", trControl=control, verbose=F, verbosity = 0)
+# fit.gbm <- train(Average_MSRP_spec~., data=train_df[, -1], method="gbm", metric="RMSE", trControl=control, verbose=F)
+print(fit.gbm)
+summary(fit.gbm)
+checkresiduals(fit.gbm)
+```
+
+### Improving Accuracy or Results
+The two best-perfoming algorithms were the Lasso and ElasticNet Regression models. We will now Search for a combination of 
+parameters for each algorithm that yields the best results.
+
+```{r FINAL1}
+# Tuning algorithm #1 - Ridge model
+set.seed(seedNum)
+parameters <- c(seq(0.1, 2, by =0.1) ,  seq(2, 5, 0.5) , seq(5, 25, 1))
+grid <- expand.grid(alpha=0, lambda = parameters)
+fit.ridge2 <- train(WPU03THRU15_Price_Index~., data=train_df[, -1], method="glmnet", metric="RMSE", tuneGrid=grid, trControl=control)
+plot(fit.ridge2)
+print(fit.ridge2)
+summary(fit.ridge2)
+checkresiduals(fit.ridge2)
+```
+
+```{r FINAL1}
+# Tuning algorithm #2 - Lasso model
+set.seed(seedNum)
+# parameters <- c(seq(0.1, 2, by =0.1) ,  seq(2, 5, 0.5) , seq(5, 25, 1))
+parameters <- c(seq(0.05, 1, by =0.01))
+grid <- expand.grid(alpha=1, lambda = parameters)
+fit.lasso2 <- train(WPU03THRU15_Price_Index~., data=train_df[, -1], method="glmnet", metric="RMSE", tuneGrid=grid, trControl=control)
+plot(fit.lasso2)
+print(fit.lasso2)
+summary(fit.lasso2)
+checkresiduals(fit.lasso2)
+```
+
+```{r FINAL1}
+# Tuning algorithm #3 - ElasticNet model
+set.seed(seedNum)
+fractionTune = seq(.3,.8,.1)
+lambdaTune = seq(.05, .3, .1)
+grid <- expand.grid(lambda = lambdaTune, fraction = fractionTune)
+fit.enet2 <- train(WPU03THRU15_Price_Index~., data=train_df[, -1], method="enet", metric="RMSE", tuneGrid=grid, trControl=control)
+plot(fit.enet2)
+print(fit.enet2)
+summary(fit.enet2)
+checkresiduals(fit.enet2)
+```
+
+```{r FINAL1}
+# Tuning algorithm #4 - Decision Tree - CART model
+set.seed(seedNum)
+# Define the hyperparameter grid using expand.grid()
+grid <- expand.grid(cp = seq(0.01, 0.3, by = 0.01))   # Complexity parameter (cost complexity pruning parameter)
+fit.cart2 <- train(WPU03THRU15_Price_Index~., data=train_df[, -1], method="rpart", metric="RMSE", tuneGrid=grid, trControl=control)
+plot(fit.cart2)
+print(fit.cart2)
+summary(fit.cart2)
+checkresiduals(fit.cart2)
+```
+
+```{r FINAL1}
+# Tuning algorithm #5 - Bagged CART model
+set.seed(seedNum)
+# Perform hyperparameter tuning
+fit.bagcart2 <- train(WPU03THRU15_Price_Index ~ ., data = train_df[, -1], method = "treebag",  metric = "RMSE", trControl = control, nbagg = 106)
+#plot(fit.bagcart2)
+print(fit.bagcart2)
+summary(fit.bagcart2)
+checkresiduals(fit.bagcart2)
+```
+
+```{r FINAL1}
+# Tuning algorithm #6 - Random Forest model
+set.seed(seedNum)
+# Define the hyperparameter grid
+hyperparameters <- expand.grid(
+  mtry = (1:15)) # Number of variables randomly sampled as candidates at each split
+
+# Perform hyperparameter tuning
+fit.rf2 <- train(WPU03THRU15_Price_Index ~ ., data = train_df[, -1], method = "rf", metric = "RMSE", trControl = control, 
+                tuneGrid = hyperparameters)
+plot(fit.rf2)
+print(fit.rf2)
+summary(fit.rf2)
+checkresiduals(fit.rf2)
+```
+
+```{r FINAL1}
+# Tuning algorithm #7 - Gradient Boosting model
+set.seed(seedNum)
+# Define the hyperparameter grid
+hyperparameters <- expand.grid(max_depth = c(2, 3, 4, 5, 6, 7),                # Maximum tree depth
+                        nrounds = (1:10)*50,       # Number of boosting iterations
+                        # default values below
+                        eta = 0.3,                 # Learning rate
+                        gamma = 0,                 # Minimum loss reduction required for a split
+                        subsample = 1,             # Subsample ratio of the training instances
+                        min_child_weight = 1,      # Minimum sum of instance weight needed in a child
+                        colsample_bytree = 0.6)    # Subsample ratio of columns when constructing each tree
+
+# Perform hyperparameter tuning
+fit.gbm2 <- train(WPU03THRU15_Price_Index ~ ., data = train_df[, -1], method = "xgbTree", metric = "RMSE", trControl = control, verbose = FALSE, verbosity = 0, tuneGrid = hyperparameters)
+plot(fit.gbm2)
+print(fit.gbm2)
+summary(fit.gbm2)
+checkresiduals(fit.gbm2)
+```
+
+### Comparing algorithms Before Tuning
+```{r SPOT_CHECK}
+# results <- resamples(list(LR=fit.lm, RIDGE=fit.ridge, LASSO=fit.lasso, ENET=fit.enet, CART=fit.cart, BagCART=fit.bagcart, RF=fit.rf, GBM=fit.gbm))
+# summary(results)
+# dotplot(results)
+# cat('The average RMSE from all models is:',
+#     mean(c(results$values$`LR~RMSE`,results$values$`RIDGE~RMSE`,results$values$`LASSO~RMSE`,results$values$`ENET~RMSE`,results$values$`CART~RMSE`,results$values$`BagCART~RMSE`,results$values$`RF~RMSE`,results$values$`GBM~RMSE`)),'\n')
+```
+
+### Compare Algorithms Before and After Tuning
+
+```{r POST_TUNING}
+results_post_tuning <- resamples(list(Ridge_2=fit.ridge2, Lasso_2=fit.lasso2, ElasticNet_2=fit.enet2, CART_2=fit.cart2, Bagged_CART_2=fit.bagcart2, Random_Forest_2=fit.rf2, Gradient_Boosting_2=fit.gbm2, LR=fit.lm, Ridge_1=fit.ridge, Lasso_1=fit.lasso, ElasticNet_1=fit.enet, CART_1=fit.cart, Bagged_CART_1=fit.bagcart, Random_Forest_1=fit.rf, Gradient_Boosting_1=fit.gbm))
+summary(results_post_tuning)
+dotplot(results_post_tuning)
+```
+
+```{r Q5}
+# Get the number of observations used for training
+n <- nrow(train_df)
+
+# Make point predictions using the trained model on the test data
+point_predictions <- predict(fit.ridge, newdata = test_df)
+
+# Get the estimated standard error of the residuals
+residuals <- test_df$WPU03THRU15_Price_Index - point_predictions
+sigma_hat <- sqrt(sum(residuals^2) / (n - length(fit.ridge$finalModel$lambda)))
+
+# Calculate the confidence intervals for predictions
+confidence_level_80 <- 0.8
+confidence_level_95 <- 0.95
+
+z_value_80 <- qnorm(1 - (1 - confidence_level_80) / 2)
+z_value_95 <- qnorm(1 - (1 - confidence_level_95) / 2)
+
+confidence_intervals_80 <- data.frame(
+  lower_80 = point_predictions - z_value_80 * sigma_hat,
+  upper_80 = point_predictions + z_value_80 * sigma_hat
+)
+
+confidence_intervals_95 <- data.frame(
+  lower_95 = point_predictions - z_value_95 * sigma_hat,
+  upper_95 = point_predictions + z_value_95 * sigma_hat
+)
+
+# Combine point predictions and confidence intervals into a single dataframe
+pred_CI_ridge2 <- cbind(point_predictions, confidence_intervals_80, confidence_intervals_95)
+```
+
+```{r Q5}
+# Get the number of observations used for training
+n <- nrow(train_df)
+
+# Make point predictions using the trained model on the test data
+point_predictions <- predict(fit.lasso, newdata = test_df)
+
+# Get the estimated standard error of the residuals
+residuals <- test_df$WPU03THRU15_Price_Index - point_predictions
+sigma_hat <- sqrt(sum(residuals^2) / (n - length(fit.lasso$finalModel$lambda)))
+
+# Calculate the confidence intervals for predictions
+confidence_level_80 <- 0.8
+confidence_level_95 <- 0.95
+
+z_value_80 <- qnorm(1 - (1 - confidence_level_80) / 2)
+z_value_95 <- qnorm(1 - (1 - confidence_level_95) / 2)
+
+confidence_intervals_80 <- data.frame(
+  lower_80 = point_predictions - z_value_80 * sigma_hat,
+  upper_80 = point_predictions + z_value_80 * sigma_hat
+)
+
+confidence_intervals_95 <- data.frame(
+  lower_95 = point_predictions - z_value_95 * sigma_hat,
+  upper_95 = point_predictions + z_value_95 * sigma_hat
+)
+
+# Combine point predictions and confidence intervals into a single dataframe
+pred_CI_lasso2 <- cbind(point_predictions, confidence_intervals_80, confidence_intervals_95)
+```
+
+```{r Q5}
+# Get the number of observations used for training
+n <- nrow(train_df)
+
+# Make point predictions using the trained model on the test data
+point_predictions <- predict(fit.enet, newdata = test_df)
+
+# Get the estimated standard error of the residuals
+residuals <- test_df$WPU03THRU15_Price_Index - point_predictions
+sigma_hat <- sqrt(sum(residuals^2) / (n - length(fit.enet$finalModel$lambda)))
+
+# Calculate the confidence intervals for predictions
+confidence_level_80 <- 0.8
+confidence_level_95 <- 0.95
+
+z_value_80 <- qnorm(1 - (1 - confidence_level_80) / 2)
+z_value_95 <- qnorm(1 - (1 - confidence_level_95) / 2)
+
+confidence_intervals_80 <- data.frame(
+  lower_80 = point_predictions - z_value_80 * sigma_hat,
+  upper_80 = point_predictions + z_value_80 * sigma_hat
+)
+
+confidence_intervals_95 <- data.frame(
+  lower_95 = point_predictions - z_value_95 * sigma_hat,
+  upper_95 = point_predictions + z_value_95 * sigma_hat
+)
+
+# Combine point predictions and confidence intervals into a single dataframe
+pred_CI_enet2 <- cbind(point_predictions, confidence_intervals_80, confidence_intervals_95)
+```
+
+```{r Q5}
+# Get the number of observations used for training
+n <- nrow(train_df)
+
+# Make point predictions using the trained model on the test data
+point_predictions <- predict(fit.cart2, newdata = test_df)
+
+# Get the estimated standard error of the residuals
+residuals <- test_df$WPU03THRU15_Price_Index - point_predictions
+sigma_hat <- sqrt(sum(residuals^2) / (n - length(fit.cart2$finalModel$lambda)))
+
+# Calculate the confidence intervals for predictions
+confidence_level_80 <- 0.8
+confidence_level_95 <- 0.95
+
+z_value_80 <- qnorm(1 - (1 - confidence_level_80) / 2)
+z_value_95 <- qnorm(1 - (1 - confidence_level_95) / 2)
+
+confidence_intervals_80 <- data.frame(
+  lower_80 = point_predictions - z_value_80 * sigma_hat,
+  upper_80 = point_predictions + z_value_80 * sigma_hat
+)
+
+confidence_intervals_95 <- data.frame(
+  lower_95 = point_predictions - z_value_95 * sigma_hat,
+  upper_95 = point_predictions + z_value_95 * sigma_hat
+)
+
+# Combine point predictions and confidence intervals into a single dataframe
+pred_CI_cart2 <- cbind(point_predictions, confidence_intervals_80, confidence_intervals_95)
+```
+
+```{r Q5}
+# Get the number of observations used for training
+n <- nrow(train_df)
+
+# Make point predictions using the trained model on the test data
+point_predictions <- predict(fit.bagcart2, newdata = test_df)
+
+# Get the estimated standard error of the residuals
+residuals <- test_df$WPU03THRU15_Price_Index - point_predictions
+sigma_hat <- sqrt(sum(residuals^2) / (n - length(fit.bagcart2$finalModel$lambda)))
+
+# Calculate the confidence intervals for predictions
+confidence_level_80 <- 0.8
+confidence_level_95 <- 0.95
+
+z_value_80 <- qnorm(1 - (1 - confidence_level_80) / 2)
+z_value_95 <- qnorm(1 - (1 - confidence_level_95) / 2)
+
+confidence_intervals_80 <- data.frame(
+  lower_80 = point_predictions - z_value_80 * sigma_hat,
+  upper_80 = point_predictions + z_value_80 * sigma_hat
+)
+
+confidence_intervals_95 <- data.frame(
+  lower_95 = point_predictions - z_value_95 * sigma_hat,
+  upper_95 = point_predictions + z_value_95 * sigma_hat
+)
+
+# Combine point predictions and confidence intervals into a single dataframe
+pred_CI_bagcart2 <- cbind(point_predictions, confidence_intervals_80, confidence_intervals_95)
+```
+
+```{r Q5}
+# Get the number of observations used for training
+n <- nrow(train_df)
+
+# Make point predictions using the trained model on the test data
+point_predictions <- predict(fit.rf, newdata = test_df)
+
+# Get the estimated standard error of the residuals
+residuals <- test_df$WPU03THRU15_Price_Index - point_predictions
+sigma_hat <- sqrt(sum(residuals^2) / (n - length(fit.rf$finalModel$lambda)))
+
+# Calculate the confidence intervals for predictions
+confidence_level_80 <- 0.8
+confidence_level_95 <- 0.95
+
+z_value_80 <- qnorm(1 - (1 - confidence_level_80) / 2)
+z_value_95 <- qnorm(1 - (1 - confidence_level_95) / 2)
+
+confidence_intervals_80 <- data.frame(
+  lower_80 = point_predictions - z_value_80 * sigma_hat,
+  upper_80 = point_predictions + z_value_80 * sigma_hat
+)
+
+confidence_intervals_95 <- data.frame(
+  lower_95 = point_predictions - z_value_95 * sigma_hat,
+  upper_95 = point_predictions + z_value_95 * sigma_hat
+)
+
+# Combine point predictions and confidence intervals into a single dataframe
+pred_CI_rf2 <- cbind(point_predictions, confidence_intervals_80, confidence_intervals_95)
+```
+
+```{r Q5}
+# Get the number of observations used for training
+n <- nrow(train_df)
+
+# Make point predictions using the trained model on the test data
+point_predictions <- predict(fit.gbm, newdata = test_df)
+
+# Get the estimated standard error of the residuals
+residuals <- test_df$WPU03THRU15_Price_Index - point_predictions
+sigma_hat <- sqrt(sum(residuals^2) / (n - length(fit.gbm$finalModel$lambda)))
+
+# Calculate the confidence intervals for predictions
+confidence_level_80 <- 0.8
+confidence_level_95 <- 0.95
+
+z_value_80 <- qnorm(1 - (1 - confidence_level_80) / 2)
+z_value_95 <- qnorm(1 - (1 - confidence_level_95) / 2)
+
+confidence_intervals_80 <- data.frame(
+  lower_80 = point_predictions - z_value_80 * sigma_hat,
+  upper_80 = point_predictions + z_value_80 * sigma_hat
+)
+
+confidence_intervals_95 <- data.frame(
+  lower_95 = point_predictions - z_value_95 * sigma_hat,
+  upper_95 = point_predictions + z_value_95 * sigma_hat
+)
+
+# Combine point predictions and confidence intervals into a single dataframe
+pred_CI_gbm2 <- cbind(point_predictions, confidence_intervals_80, confidence_intervals_95)
+```
+
+```{r Q27}
+data_forecast_ridge2 <- data.frame(Time = test_df$DATE,
+                   Actual = test_df$WPU03THRU15_Price_Index,
+                   Forecasted = pred_CI_ridge2)
+
+data_forecast_lasso2 <- data.frame(Time = test_df$DATE,
+                   Actual = test_df$WPU03THRU15_Price_Index,
+                   Forecasted = pred_CI_lasso2)
+
+data_forecast_enet2 <- data.frame(Time = test_df$DATE,
+                   Actual = test_df$WPU03THRU15_Price_Index,
+                   Forecasted = pred_CI_enet2)
+
+data_forecast_cart2 <- data.frame(Time = test_df$DATE,
+                   Actual = test_df$WPU03THRU15_Price_Index,
+                   Forecasted = pred_CI_cart2)
+
+data_forecast_bagcart2 <- data.frame(Time = test_df$DATE,
+                   Actual = test_df$WPU03THRU15_Price_Index,
+                   Forecasted = pred_CI_bagcart2)
+
+data_forecast_rf2 <- data.frame(Time = test_df$DATE,
+                   Actual = test_df$WPU03THRU15_Price_Index,
+                   Forecasted = pred_CI_rf2)
+
+data_forecast_gbm2 <- data.frame(Time = test_df$DATE,
+                   Actual = test_df$WPU03THRU15_Price_Index,
+                   Forecasted = pred_CI_gbm2)
+```
+
+```{r Q27}
+# Plot the forecasted vs. actual values for Linear model
+ggplot(data_forecast_lin, aes(Time)) +
+  geom_ribbon(aes(ymin = Forecasted.Lo.95, ymax = Forecasted.Hi.95),
+              fill = "#BFD4E9", alpha = 0.5) +
+  geom_ribbon(aes(ymin = Forecasted.Lo.80, ymax = Forecasted.Hi.80),
+              fill = "#9FC5E8", alpha = 0.5) +
+  geom_line(aes(y = Actual, color = "Actual")) +
+  geom_line(aes(y = Forecasted.Point.Forecast, color = "Forecasted")) +
+  labs(x = "Time", y = "WPU03THRU15_Price_Index") +
+  scale_color_manual(values = c(Actual = "red", Forecasted = "blue")) +
+  theme_minimal() + ggtitle("18 Month Forecast vs. Actual Values for Linear model")
+```
+
+```{r Q27}
+# Accuracy for 18 Month - Linear model
+forecast::accuracy(fit_forecast_lin, test_df$WPU03THRU15_Price_Index) %>% round(4)
+```
+
+```{r Q27}
+# Plot the forecasted vs. actual values for ARIMAX model
+ggplot(data_forecast_ARIMAX, aes(Time)) +
+  geom_ribbon(aes(ymin = Forecasted.Lo.95, ymax = Forecasted.Hi.95),
+              fill = "#BFD4E9", alpha = 0.5) +
+  geom_ribbon(aes(ymin = Forecasted.Lo.80, ymax = Forecasted.Hi.80),
+              fill = "#9FC5E8", alpha = 0.5) +
+  geom_line(aes(y = Actual, color = "Actual")) +
+  geom_line(aes(y = Forecasted.Point.Forecast, color = "Forecasted")) +
+  labs(x = "Time", y = "WPU03THRU15_Price_Index") +
+  scale_color_manual(values = c(Actual = "red", Forecasted = "blue")) +
+  theme_minimal() + ggtitle("18 Month Forecast vs. Actual Values for ARIMAX model")
+```
+
+```{r Q27}
+# Accuracy for 18 Month - ARIMAX model
+forecast::accuracy(fit_forecast_ARIMAX, test_df$WPU03THRU15_Price_Index) %>% round(4)
+```
+
+```{r Q27}
+# Plot the forecasted vs. actual values for Ridge Regression model
+ggplot(data_forecast_ridge2, aes(Time)) +
+  geom_ribbon(data = data_forecast_ridge2, aes(ymin = Forecasted.lower_95, ymax = Forecasted.upper_95),
+              fill = "#BFD4E9", alpha = 0.5) +
+  geom_ribbon(data = data_forecast_ridge2, aes(ymin = Forecasted.lower_80, ymax = Forecasted.upper_80),
+              fill = "#9FC5E8", alpha = 0.5) +
+  geom_line(aes(y = Actual, color = "Actual")) +
+  geom_line(aes(y = Forecasted.point_predictions, color = "Forecasted")) +
+  labs(x = "Time", y = "WPU03THRU15_Price_Index") +
+  scale_color_manual(values = c(Actual = "red", Forecasted = "blue")) +
+  theme_minimal() + ggtitle("18 Month Forecast vs. Actual Values for Ridge Regression model")
+```
+
+```{r Q27}
+# Accuracy for 18 Month - Ridge Regression model
+forecast::accuracy(pred_CI_ridge2$point_predictions, test_df$WPU03THRU15_Price_Index) %>% round(4)
+```
+
+```{r Q27}
+# Plot the forecasted vs. actual values for Lasso Regression model
+ggplot(data_forecast_lasso2, aes(Time)) +
+  geom_ribbon(data = data_forecast_lasso2, aes(ymin = Forecasted.lower_95, ymax = Forecasted.upper_95),
+              fill = "#BFD4E9", alpha = 0.5) +
+  geom_ribbon(data = data_forecast_lasso2, aes(ymin = Forecasted.lower_80, ymax = Forecasted.upper_80),
+              fill = "#9FC5E8", alpha = 0.5) +
+  geom_line(aes(y = Actual, color = "Actual")) +
+  geom_line(aes(y = Forecasted.point_predictions, color = "Forecasted")) +
+  labs(x = "Time", y = "WPU03THRU15_Price_Index") +
+  scale_color_manual(values = c(Actual = "red", Forecasted = "blue")) +
+  theme_minimal() + ggtitle("18 Month Forecast vs. Actual Values for Lasso Regression model")
+```
+
+```{r Q27}
+# Accuracy for 18 Month - Lasso Regression model
+forecast::accuracy(pred_CI_lasso2$point_predictions, test_df$WPU03THRU15_Price_Index) %>% round(4)
+```
+
+```{r Q27}
+# Plot the forecasted vs. actual values for ElasticNet Regression model
+ggplot(data_forecast_enet2, aes(Time)) +
+  geom_ribbon(data = data_forecast_enet2, aes(ymin = Forecasted.lower_95, ymax = Forecasted.upper_95),
+              fill = "#BFD4E9", alpha = 0.5) +
+  geom_ribbon(data = data_forecast_enet2, aes(ymin = Forecasted.lower_80, ymax = Forecasted.upper_80),
+              fill = "#9FC5E8", alpha = 0.5) +
+  geom_line(aes(y = Actual, color = "Actual")) +
+  geom_line(aes(y = Forecasted.point_predictions, color = "Forecasted")) +
+  labs(x = "Time", y = "WPU03THRU15_Price_Index") +
+  scale_color_manual(values = c(Actual = "red", Forecasted = "blue")) +
+  theme_minimal() + ggtitle("18 Month Forecast vs. Actual Values for ElasticNet Regression model")
+```
+  
+```{r Q27}
+# Accuracy for 18 Month - ElasticNet Regression model
+forecast::accuracy(pred_CI_enet2$point_predictions, test_df$WPU03THRU15_Price_Index) %>% round(4)
+```
+
+```{r Q27}
+# Plot the forecasted vs. actual values for Decision Tree - CART model
+ggplot(data_forecast_cart2, aes(Time)) +
+  geom_ribbon(data = data_forecast_cart2, aes(ymin = Forecasted.lower_95, ymax = Forecasted.upper_95),
+              fill = "#BFD4E9", alpha = 0.5) +
+  geom_ribbon(data = data_forecast_cart2, aes(ymin = Forecasted.lower_80, ymax = Forecasted.upper_80),
+              fill = "#9FC5E8", alpha = 0.5) +
+  geom_line(aes(y = Actual, color = "Actual")) +
+  geom_line(aes(y = Forecasted.point_predictions, color = "Forecasted")) +
+  labs(x = "Time", y = "WPU03THRU15_Price_Index") +
+  scale_color_manual(values = c(Actual = "red", Forecasted = "blue")) +
+  theme_minimal() + ggtitle("18 Month Forecast vs. Actual Values for Decision Tree - CART model")
+```
+
+```{r Q27}
+# Accuracy for 18 Month - Decision Tree - CART model
+forecast::accuracy(pred_CI_cart2$point_predictions, test_df$WPU03THRU15_Price_Index) %>% round(4)
+```
+
+```{r Q27}
+# Plot the forecasted vs. actual values for Bagged CART model
+ggplot(data_forecast_bagcart2, aes(Time)) +
+  geom_ribbon(data = data_forecast_bagcart2, aes(ymin = Forecasted.lower_95, ymax = Forecasted.upper_95),
+              fill = "#BFD4E9", alpha = 0.5) +
+  geom_ribbon(data = data_forecast_bagcart2, aes(ymin = Forecasted.lower_80, ymax = Forecasted.upper_80),
+              fill = "#9FC5E8", alpha = 0.5) +
+  geom_line(aes(y = Actual, color = "Actual")) +
+  geom_line(aes(y = Forecasted.point_predictions, color = "Forecasted")) +
+  labs(x = "Time", y = "WPU03THRU15_Price_Index") +
+  scale_color_manual(values = c(Actual = "red", Forecasted = "blue")) +
+  theme_minimal() + ggtitle("18 Month Forecast vs. Actual Values for Bagged CART model")
+```
+  
+```{r Q27}
+# Accuracy for 18 Month - Bagged CART model
+forecast::accuracy(pred_CI_bagcart2$point_predictions, test_df$WPU03THRU15_Price_Index) %>% round(4)
+```
+
+```{r Q27}
+# Plot the forecasted vs. actual values for Random Forest model
+ggplot(data_forecast_rf2, aes(Time)) +
+  geom_ribbon(data = data_forecast_rf2, aes(ymin = Forecasted.lower_95, ymax = Forecasted.upper_95),
+              fill = "#BFD4E9", alpha = 0.5) +
+  geom_ribbon(data = data_forecast_rf2, aes(ymin = Forecasted.lower_80, ymax = Forecasted.upper_80),
+              fill = "#9FC5E8", alpha = 0.5) +
+  geom_line(aes(y = Actual, color = "Actual")) +
+  geom_line(aes(y = Forecasted.point_predictions, color = "Forecasted")) +
+  labs(x = "Time", y = "WPU03THRU15_Price_Index") +
+  scale_color_manual(values = c(Actual = "red", Forecasted = "blue")) +
+  theme_minimal() + ggtitle("18 Month Forecast vs. Actual Values for Random Forest model")
+```
+
+```{r Q27}
+# Accuracy for 18 Month - Random Forest model
+forecast::accuracy(pred_CI_rf2$point_predictions, test_df$WPU03THRU15_Price_Index) %>% round(4)
+```
+
+```{r Q27}
+# Plot the forecasted vs. actual values for Gradient Boosting model
+ggplot(data_forecast_gbm2, aes(Time)) +
+  geom_ribbon(data = data_forecast_gbm2, aes(ymin = Forecasted.lower_95, ymax = Forecasted.upper_95),
+              fill = "#BFD4E9", alpha = 0.5) +
+  geom_ribbon(data = data_forecast_gbm2, aes(ymin = Forecasted.lower_80, ymax = Forecasted.upper_80),
+              fill = "#9FC5E8", alpha = 0.5) +
+  geom_line(aes(y = Actual, color = "Actual")) +
+  geom_line(aes(y = Forecasted.point_predictions, color = "Forecasted")) +
+  labs(x = "Time", y = "WPU03THRU15_Price_Index") +
+  scale_color_manual(values = c(Actual = "red", Forecasted = "blue")) +
+  theme_minimal() + ggtitle("18 Month Forecast vs. Actual Values for Gradient Boosting model")
+```
+  
+```{r Q27}
+# Accuracy for 18 Month - Gradient Boosting model
+forecast::accuracy(pred_CI_gbm2$point_predictions, test_df$WPU03THRU15_Price_Index) %>% round(4)
+```
+
+### Saving model and loading for later use
+
+```{r}
+# saveRDS(fit.enet2, "./finalModel_enet2_Regression.rds")
+# # fit.enet2 <- readRDS("finalModel_enet2_Regression.rds")
+# 
+# saveRDS(fit.lasso2, "./finalModel_lasso2_Regression.rds")
+# # fit.lasso2 <- readRDS("finalModel_lasso2_Regression.rds")
+```

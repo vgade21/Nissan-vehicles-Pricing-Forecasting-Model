@@ -1,0 +1,536 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu May 25 01:16:41 2023
+
+@author: vamshi gadepally
+"""
+
+import pandas as pd
+
+# Path to CSV file
+csv_file = 'C:\\Users\\vamsh\\Documents\\Uni\\UChicago\\Summer 2023\\MSCA 34003_IP01 - Capstone II\\Project\\Data\\Macro Factors\\'
+
+'''
+merged_table_final_filtered = pd.read_csv(csv_file + 'merged_table_final_filtered_2month_lag.csv')
+'''
+
+# Load Consumer_confidence_index
+# Consumer confidence index (CCI) Jan 2011 to Apr 2023:
+# Note: An indicator above 100 signals a boost in the consumers’ confidence towards the future economic situation,
+#       therefore are more inclined to spend money on major purchases in the next 12 months.
+#       An indicator below 100 indicate a pessimistic attitude towards future developments in the economy, 
+#       possibly resulting in a tendency to save more and consume less.
+CCI = pd.read_csv(csv_file + 'Consumer_confidence_index.csv')
+CCI_new = CCI.copy()
+# Create a list of columns to drop
+columns_to_drop = [col for col in CCI_new.columns if col not in ["TIME", "Value"]]
+# Drop the columns from the dataframe
+CCI_new = CCI_new.drop(columns=columns_to_drop)
+CCI_new = CCI_new.rename(columns={'TIME': 'DATE'})
+CCI_new['DATE'] = pd.to_datetime(CCI_new['DATE'])
+CCI_new['DATE'] = CCI_new['DATE'].dt.strftime('%Y-%m')
+CCI_new.dtypes
+# Count the number of missing values in each column
+missing_values_count = CCI_new.isnull().sum()
+missing_values_indices = CCI_new[CCI_new.isnull().any(axis=1)].index.tolist()
+print("Number of missing values in each column:\n", missing_values_count)
+# print("Indices of the missing values:\n", missing_values_indices)
+# Jan 2011 to Apr 2023 = 148 months
+print("Number of months in table:\n", len(CCI_new))
+
+# Load GDP
+# USA GDP Jan 1992 to Feb 2023:
+# Note: U.S. dollars (in billions)
+#       File has Monthly Nominal GDP Index and Monthly Real GDP Index (takes into account inflation).
+#       Using Monthly Nominal GDP Index
+GDP = pd.read_csv(csv_file + 'GDP.csv')
+GDP['DATE'] = pd.to_datetime(GDP['DATE'])
+GDP['DATE'] = GDP['DATE'].dt.strftime('%Y-%m')
+GDP=GDP.drop(["Unnamed: 2", "Unnamed: 3"],axis=1)
+GDP.dtypes
+# Count the number of missing values in each column
+missing_values_count = GDP.isnull().sum()
+missing_values_indices = GDP[GDP.isnull().any(axis=1)].index.tolist()
+print("Number of missing values in each column:\n", missing_values_count)
+print("Indices of the missing values:\n", missing_values_indices) # Indices [374, 375, 376, 377, 378, 379]
+GDP = GDP.dropna()
+# Jan 1992 to Feb 2023 = 374 months
+print("Number of months in table:\n", len(GDP))
+
+# Load Global_price_of_Metal_index
+# Global price of Metal index (PMETAINDEXM) Jan 1992 to Apr 2023:
+# Note: nominal U.S. dollars per dry metric ton
+Metal_price = pd.read_csv(csv_file + 'Global_price_of_Metal_index.csv')
+Metal_price['DATE'] = pd.to_datetime(Metal_price['DATE'])
+Metal_price['DATE'] = Metal_price['DATE'].dt.strftime('%Y-%m')
+Metal_price.dtypes
+# Count the number of missing values in each column
+missing_values_count = Metal_price.isnull().sum()
+missing_values_indices = Metal_price[Metal_price.isnull().any(axis=1)].index.tolist()
+print("Number of missing values in each column:\n", missing_values_count)
+# print("Indices of the missing values:\n", missing_values_indices)
+# Jan 1992 to Apr 2023 = 376 months
+print("Number of months in table:\n", len(Metal_price))
+
+# Iron_Ore
+# Iron Ore global price Jul 2011 to Jul 2021 (Jul is missing so Jun 2021):
+# The "Global Price of Iron Ore" column seems to be the relevant one
+# Note: nominal U.S. dollars per dry metric ton
+Iron_Ore = pd.read_csv(csv_file + 'Iron_Ore.csv', encoding='latin1')
+Iron_Ore_new = Iron_Ore.copy()
+# Create a list of columns to drop
+columns_to_drop = [col for col in Iron_Ore_new.columns if col not in ["DATE", "Global Price of Iron Ore"]]
+# Drop the columns from the dataframe
+Iron_Ore_new = Iron_Ore_new.drop(columns=columns_to_drop)
+Iron_Ore_new['DATE'] = pd.to_datetime(Iron_Ore_new['DATE'])
+Iron_Ore_new['DATE'] = Iron_Ore_new['DATE'].dt.strftime('%Y-%m')
+Iron_Ore_new.dtypes
+# Count the number of missing values in each column
+missing_values_count = Iron_Ore_new.isnull().sum()
+missing_values_indices = Iron_Ore_new[Iron_Ore_new.isnull().any(axis=1)].index.tolist()
+print("Number of missing values in each column:\n", missing_values_count)
+print("Indices of the missing values:\n", missing_values_indices) # index 120
+Iron_Ore_new = Iron_Ore_new.dropna()
+# Jul 2011 to Jul 2021 = 121 months less last month missing and removed = 120 months
+print("Number of months in table:\n", len(Iron_Ore_new)) 
+
+# CPI_Inflation
+# USA CPI Inflation from Jan 1913 to Apr 2022:
+# Note: This is a price index of a basket of goods and services paid by urban consumers. 
+# Percent changes in the price index measure the inflation rate between any two time periods. 
+# The most common inflation metric is the percent change from one year ago
+CPI_Inflation = pd.read_csv(csv_file + 'CPI_Inflation.csv')
+
+# Dropping "Unnamed: 0" column
+CPI_Inflation=CPI_Inflation.drop(["Unnamed: 0"],axis=1)
+CPI_Inflation.head(2)
+
+# Checking for for null fields
+import seaborn as sns
+sns.heatmap(CPI_Inflation.isnull(),yticklabels=False,cbar=False,cmap='viridis')
+CPI_Inflation.isnull().sum()
+
+CPI_copy = CPI_Inflation.copy()
+
+# Convert the 'Year' column which is float to int then string type
+CPI_copy['Year'] = CPI_copy['Year'].astype(int)
+CPI_copy['Year'] = CPI_copy['Year'].astype(str)
+
+# Create a new dataframe for the desired output
+new_table = pd.DataFrame(columns=['Date', 'Inflation'])
+
+# Iterate over each row in the original dataframe
+for index, row in CPI_copy.iterrows():
+    # Iterate over each month in the row
+    for month in range(1, 13):
+        # Skip NaN values
+        if pd.isnull(row[month]):
+            continue
+        
+        # Create the date in yyyy-mm format
+        if month < 10:
+            date = row['Year'] + '-0' + str(month)
+        else:
+            date = row['Year'] + '-' + str(month)
+        
+        # Calculate inflation percentage
+        if index == 0:
+            inflation = 0
+        else:
+            prev_row = CPI_copy.iloc[index - 1]
+            prev_value = prev_row[month]
+            inflation = (row[month] - prev_value) / prev_value * 100
+        
+        # Append the row to the new dataframe
+        new_table = new_table.append({'Date': date, 'Inflation': inflation}, ignore_index=True)
+
+CPI_Inflation_new = new_table.copy()
+CPI_Inflation_new['Inflation'] = CPI_Inflation_new['Inflation'].astype(float)
+CPI_Inflation_new = CPI_Inflation_new.rename(columns={'Date': 'DATE'})
+CPI_Inflation_new.dtypes
+# Count the number of missing values in each column
+missing_values_count = CPI_Inflation_new.isnull().sum()
+missing_values_indices = CPI_Inflation_new[CPI_Inflation_new.isnull().any(axis=1)].index.tolist()
+print("Number of missing values in each column:\n", missing_values_count)
+# print("Indices of the missing values:\n", missing_values_indices)
+# Jan 1913 to Apr 2022 = 1312 months
+print("Number of months in table:\n", len(CPI_Inflation_new)) 
+
+# Merging the macro factor tables based on the "DATE" column
+merged_table = pd.merge(CCI_new, GDP, on="DATE", how="inner")
+merged_table = pd.merge(merged_table, Metal_price, on="DATE", how="inner")
+merged_table = pd.merge(merged_table, Iron_Ore_new, on="DATE", how="inner")
+merged_table = pd.merge(merged_table, CPI_Inflation_new, on="DATE", how="inner")
+
+# Get the minimum and maximum of the common dates
+common_dates = merged_table["DATE"].unique()
+min_date = min(common_dates)
+max_date = max(common_dates)
+print("Minimum Date:", min_date)
+print("Maximum Date:", max_date) # 2011-07 to 2021-06 (120 months)
+# Jul 2011 to Jun 2021 = 120 months
+print("Number of months in table:\n", len(merged_table))
+
+# Renaming columns in the merged_table
+column_rename_dict = {
+    'Value': 'CCI',
+    'Nominal GDP': 'GDP',
+    'PMETAINDEXM': 'Metal',
+    'Global Price of Iron Ore': 'Iron_Ore'
+}
+merged_table = merged_table.rename(columns=column_rename_dict)
+
+# Path to Spec file
+csv_file_2 = 'C:\\Users\\vamsh\\Documents\\Uni\\UChicago\\Summer 2023\\MSCA 34003_IP01 - Capstone II\\Project\\Data\\'
+
+# Load Spec_combined
+Spec_combined = pd.read_csv(csv_file_2 + 'Spec\\combined\\Spec_combined.csv')
+
+# "Data date" and "Date of change" columns are the same so the "Date of change" was used to aggregate the
+# data into months
+first_columns = ['Name', 'Date of change', 'Make', 'Model', 'Version name', 'Model year', 'Retail price']
+Spec = Spec_combined[first_columns + [col for col in Spec_combined.columns if col not in first_columns]]
+# Keeping only the Date and MSRP columns
+MSRP_spec = Spec[['Date of change', 'Retail price']]
+MSRP_spec['Date of change'] = pd.to_datetime(MSRP_spec['Date of change'], format='%d/%m/%Y')
+# Grouping the data into months
+MSRP_spec['Year_Month'] = MSRP_spec['Date of change'].dt.strftime('%Y-%m')
+MSRP_spec.dtypes
+# Calculating the average "MSRP_spec" for each month
+average_MSRP_spec = MSRP_spec.groupby('Year_Month')['Retail price'].mean()
+MSRP_spec_new = pd.DataFrame({'Year_Month': average_MSRP_spec.index, 'Average_MSRP_spec': average_MSRP_spec.values})
+MSRP_spec_new = MSRP_spec_new.rename(columns={'Year_Month': 'DATE'})
+MSRP_spec_new.dtypes
+# Count the number of missing values in each column
+missing_values_count = MSRP_spec_new.isnull().sum()
+missing_values_indices = MSRP_spec_new[MSRP_spec_new.isnull().any(axis=1)].index.tolist()
+print("Number of missing values in each column:\n", missing_values_count)
+# print("Indices of the missing values:\n", missing_values_indices)
+# Jan 2010 to Mar 2023 = 159 months
+print("Number of months in table:\n", len(MSRP_spec_new)) #  134 months
+
+# Merging the MSRP table with the macro factor tables
+merged_table_final = pd.merge(MSRP_spec_new, merged_table, on="DATE", how="inner")
+# Jul 2011 to Jun 2021 = 120 months
+print("Number of months in table:\n", len(merged_table_final)) #  112 months
+
+# Jan 2013 to Jun 2021 is complete but 2011 and 2012 is missing months, so excluding these years
+merged_table_final_filtered = merged_table_final[~merged_table_final['DATE'].str.startswith(('2011', '2012'))]
+# Jan 2013 to Jun 2021 = 102 months
+print("Number of months in table:\n", len(merged_table_final_filtered))
+
+# Save the DataFrame to a CSV file
+# merged_table_final_filtered.to_csv(csv_file + 'merged_table_final_filtered.csv', index=False)
+
+# Load DataFrame
+# merged_table_final_filtered = pd.read_csv(csv_file + 'merged_table_final_filtered_2month_lag.csv')
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Boxplot of each macro factor
+for column_name in merged_table_final_filtered.columns[1:]:
+    if column_name != 'DATE':
+        plt.boxplot(merged_table_final_filtered[column_name], labels=[column_name])
+        # Find and label the outliers with corresponding dates
+        outliers = merged_table_final_filtered[merged_table_final_filtered[column_name] > 1.5 * merged_table_final_filtered[column_name].quantile(0.75)]
+        for i, value in outliers[column_name].iteritems():
+            outlier_date = merged_table_final_filtered.loc[i, 'DATE']
+            plt.text(0.98, value, f"{value}", ha='right', va='center', color='red')
+            plt.text(1.02, value, f"({outlier_date})", ha='left', va='center', color='gray')
+        plt.title('Boxplot of ' + column_name)
+        plt.ylabel('Values')
+        plt.show()
+    
+# Selecting the columns for scatterplots, correlation heatmap, and correlation calculations
+columns_for_scatterplot = ['CCI', 'GDP', 'Metal', 'Iron_Ore', 'Inflation']
+columns_for_correlation = ['Average_MSRP_spec', 'CCI', 'GDP', 'Metal', 'Iron_Ore', 'Inflation']
+
+# Scatterplots
+for column in columns_for_scatterplot:
+    if column != 'DATE':
+        sns.scatterplot(data=merged_table_final_filtered, x='Average_MSRP_spec', y=column)
+        plt.xlabel('Average_MSRP_spec')
+        plt.ylabel(column)
+        plt.title(f'Scatterplot: Average_MSRP_spec vs {column}')
+        plt.show()
+
+# Line plots of each column
+for column in merged_table_final_filtered.columns:
+    if column != 'DATE':
+        plt.plot(merged_table_final_filtered['DATE'], merged_table_final_filtered[column], label=column)
+        plt.xlabel('DATE')
+        plt.ylabel(column)
+        plt.title(f'Line Plot of {column}')
+        x_values = merged_table_final_filtered['DATE']
+        x_ticks = [x_values.iloc[0], *x_values.iloc[4::5], x_values.iloc[-1]]  # First, every second, and last x-axis label
+        plt.xticks(rotation=35, ha='right')
+        plt.xticks(x_ticks)
+        plt.tick_params(axis='x', labelsize=7)
+        plt.show()
+        
+# Correlation Heatmap
+correlation_data = merged_table_final_filtered[columns_for_correlation]
+correlation_matrix = correlation_data.corr()
+# Plotting Pearson's Correlation Heatmap
+# The scores are between -1 and 1 for perfectly negatively correlated variables and perfectly positively 
+# correlated respectively
+sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm')
+plt.title("Pearson's Correlation Heatmap of Macro Factors and average MSRP")
+plt.show()
+
+# Pearson's Correlation table
+pearson_correlation = correlation_data.corr(method='pearson')
+pearson_table = pd.DataFrame(pearson_correlation, columns=columns_for_correlation, index=columns_for_correlation)
+print(pearson_table)
+
+# Plotting Spearman's Correlation Heatmap
+# As with the Pearson correlation coefficient, the scores are between -1 and 1
+spearman_correlation = correlation_data.corr(method='spearman')
+sns.heatmap(spearman_correlation, annot=True, cmap='coolwarm')
+plt.title("Spearman's Correlation Heatmap of Macro Factors and average MSRP")
+plt.show()
+
+# Spearman's Correlation table
+spearman_correlation = correlation_data.corr(method='spearman')
+spearman_table = pd.DataFrame(spearman_correlation, columns=columns_for_correlation, index=columns_for_correlation)
+print(spearman_table)
+
+# Converting DATE to format dd-mm-yyyy
+merged_table_final_filtered_2 = merged_table_final_filtered.copy()
+merged_table_final_filtered_2['DATE'] = pd.to_datetime(merged_table_final_filtered_2['DATE'])
+merged_table_final_filtered_2['DATE'] = merged_table_final_filtered_2['DATE'].dt.strftime('%d-%m-%Y')
+merged_table_final_filtered_2['DATE'] = pd.to_datetime(merged_table_final_filtered_2['DATE'])
+merged_table_final_filtered_2.dtypes
+
+from sklearn.model_selection import train_test_split
+# Splitting the data into train and test sets
+train_size = 0.8  # 80% of the data for training
+train_data, test_data = train_test_split(merged_table_final_filtered_2, train_size=train_size, shuffle=False)
+print("Train set size:", len(train_data))
+print("Test set size:", len(test_data))
+
+from statsmodels.tsa.stattools import adfuller, kpss
+# Augmented Dickey-Fuller Test
+adf_result = adfuller(train_data['Average_MSRP_spec']) 
+print("ADF Statistic:", adf_result[0]) # ADF Statistic: -8.60014194837975
+print("p-value:", adf_result[1]) # p-value: 6.904433839058528e-14
+'''
+The p-value (<0.01) is less than the significance level (0.05) for Average_MSRP_spec.
+Which means that the null hypothesis can be rejected, and the time series is considered stationary.
+'''
+# KPSS Test
+kpss_result = kpss(train_data['Average_MSRP_spec'])
+print("KPSS Statistic:", kpss_result[0]) # KPSS Statistic: 0.10301576562107678
+print("p-value:", kpss_result[1]) # p-value: 0.1, The actual p-value is greater than the p-value returned.
+'''
+The p-value is greater than     0.1.
+Since this value is not less than .05, we fail to reject the null hypothesis of the KPSS test.
+This means we can assume that the time series is stationary.
+'''
+
+from scipy.stats import boxcox
+# Perform Box-Cox transformation
+train_data['Average_MSRP_spec_transformed'], lambda_value = boxcox(train_data['Average_MSRP_spec'])
+# Printing the lambda value
+print("Lambda value:", lambda_value)
+
+import numpy as np
+# Plotting the Average_MSRP_spec against DATE
+# Outlier at 2020-04 with 85601.5 and peaks at 2017-04 with 60300.9, 2013.03 with 56359.4
+plt.plot(merged_table_final_filtered['DATE'], merged_table_final_filtered['Average_MSRP_spec'])
+plt.xlabel('DATE')
+plt.ylabel('Average_MSRP_spec')
+plt.title('Average_MSRP_spec over Time')
+# Get the number of data points and calculate step size for x-axis labels
+num_points = len(merged_table_final_filtered['DATE'])
+step_size = int(np.ceil(num_points / 30))  # Can adjust the step size here
+plt.xticks(range(0, num_points, step_size), merged_table_final_filtered['DATE'].iloc[::step_size], rotation=55, fontsize=9)
+plt.show()
+
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+# Plotting the ACF
+plot_acf(merged_table_final_filtered['Average_MSRP_spec'], lags=30)
+plt.xlabel('Lags')
+plt.ylabel('Autocorrelation')
+plt.title('Autocorrelation Function (ACF) for Average_MSRP_spec')
+plt.show()
+# Plotting the PACF
+plot_pacf(merged_table_final_filtered['Average_MSRP_spec'], lags=30)
+plt.xlabel('Lags')
+plt.ylabel('Partial Autocorrelation')
+plt.title('Partial Autocorrelation Function (PACF) for Average_MSRP_spec')
+plt.show()
+
+
+
+
+# Load Semiconductor
+# Producer Price Index by Industry: Semiconductor and Other Electronic Component Manufacturing 
+# Dec 1984 to May 2023:
+Semi = pd.read_csv(csv_file + 'Semiconductor.csv')
+Semi_new = Semi.copy()
+Semi_new['DATE'] = pd.to_datetime(Semi_new['DATE'])
+Semi_new['DATE'] = Semi_new['DATE'].dt.strftime('%Y-%m')
+Semi_new = Semi_new.rename(columns={'PCU33443344': 'Semi_Price_Index'})
+Semi_new.dtypes
+# Count the number of missing values in each column
+missing_values_count = Semi_new.isnull().sum()
+missing_values_indices = Semi_new[Semi_new.isnull().any(axis=1)].index.tolist()
+print("Number of missing values in each column:\n", missing_values_count)
+# print("Indices of the missing values:\n", missing_values_indices)
+# Dec 1984 to May 2023 = 462 months
+print("Number of months in table:\n", len(Semi_new))
+
+# Load WPU03THRU15
+# PPI Commodity data for Industrial commodities, not seasonally adjusted Jan 2011 to May 2023:
+WPU03THRU15 = pd.read_csv(csv_file + 'WPU03THRU15.csv')
+WPU03THRU15_new = WPU03THRU15.copy()
+WPU03THRU15_new=WPU03THRU15_new.drop(["Series ID", "Year", "Period"],axis=1)
+WPU03THRU15_new = WPU03THRU15_new.rename(columns={'Label': 'DATE', 'Value': 'WPU03THRU15_Price_Index'})
+WPU03THRU15_new['DATE'] = pd.to_datetime(WPU03THRU15_new['DATE'])
+WPU03THRU15_new['DATE'] = WPU03THRU15_new['DATE'].dt.strftime('%Y-%m')
+WPU03THRU15_new.dtypes
+# Count the number of missing values in each column
+missing_values_count = WPU03THRU15_new.isnull().sum()
+missing_values_indices = WPU03THRU15_new[WPU03THRU15_new.isnull().any(axis=1)].index.tolist()
+print("Number of missing values in each column:\n", missing_values_count)
+# print("Indices of the missing values:\n", missing_values_indices)
+# Jan 2011 to May 2023 = 149 months
+print("Number of months in table:\n", len(WPU03THRU15_new))
+
+# Load WPU10
+# PPI Commodity data for Metals and metal products, not seasonally adjusted Jan 2011 to May 2023:
+WPU10 = pd.read_csv(csv_file + 'WPU10.csv')
+WPU10_new = WPU10.copy()
+WPU10_new=WPU10_new.drop(["Series ID", "Year", "Period"],axis=1)
+WPU10_new = WPU10_new.rename(columns={'Label': 'DATE', 'Value': 'WPU10_Price_Index'})
+WPU10_new['DATE'] = pd.to_datetime(WPU10_new['DATE'])
+WPU10_new['DATE'] = WPU10_new['DATE'].dt.strftime('%Y-%m')
+WPU10_new.dtypes
+# Count the number of missing values in each column
+missing_values_count = WPU10_new.isnull().sum()
+missing_values_indices = WPU10_new[WPU10_new.isnull().any(axis=1)].index.tolist()
+print("Number of missing values in each column:\n", missing_values_count)
+# print("Indices of the missing values:\n", missing_values_indices)
+# Jan 2011 to May 2023 = 149 months
+print("Number of months in table:\n", len(WPU10_new))
+
+# Load WPU1017
+# PPI Commodity data for Metals and metal products-Steel mill products, not seasonally adjusted 
+# Jan 2011 to May 2023:
+WPU1017 = pd.read_csv(csv_file + 'WPU1017.csv')
+WPU1017_new = WPU1017.copy()
+WPU1017_new=WPU1017_new.drop(["Series ID", "Year", "Period"],axis=1)
+WPU1017_new = WPU1017_new.rename(columns={'Label': 'DATE', 'Value': 'WPU1017_Price_Index'})
+WPU1017_new['DATE'] = pd.to_datetime(WPU1017_new['DATE'])
+WPU1017_new['DATE'] = WPU1017_new['DATE'].dt.strftime('%Y-%m')
+WPU1017_new.dtypes
+# Count the number of missing values in each column
+missing_values_count = WPU1017_new.isnull().sum()
+missing_values_indices = WPU1017_new[WPU1017_new.isnull().any(axis=1)].index.tolist()
+print("Number of missing values in each column:\n", missing_values_count)
+# print("Indices of the missing values:\n", missing_values_indices)
+# Jan 2011 to May 2023 = 149 months
+print("Number of months in table:\n", len(WPU1017_new))
+
+# Merging the macro factor tables based on the "DATE" column
+merged_table_2 = pd.merge(Semi_new, WPU03THRU15_new, on="DATE", how="inner")
+merged_table_2 = pd.merge(merged_table_2, WPU10_new, on="DATE", how="inner")
+merged_table_2 = pd.merge(merged_table_2, WPU1017_new, on="DATE", how="inner")
+
+# Get the minimum and maximum of the common dates
+common_dates = merged_table_2["DATE"].unique()
+min_date = min(common_dates)
+max_date = max(common_dates)
+print("Minimum Date:", min_date)
+print("Maximum Date:", max_date) # 2011-01 to 2023-05 (149 months)
+# Jan 2011 to May 2023 = 149 months
+print("Number of months in table:\n", len(merged_table_2))
+
+# Merging the MSRP table with the macro factor tables
+merged_table_final_2 = pd.merge(MSRP_spec_new, merged_table_2, on="DATE", how="inner")
+# Jul 2011 to Mar 2023 = 141 months
+print("Number of months in table:\n", len(merged_table_final_2)) #  133 months
+
+# Jan 2013 to Jun 2021 is complete but 2011 and 2012 is missing months, so excluding these years
+merged_table_final_filtered_Products = merged_table_final_2[~merged_table_final_2['DATE'].str.startswith(('2011', '2012'))]
+# Jan 2013 to Mar 2023 = 123 months
+print("Number of months in table:\n", len(merged_table_final_filtered_Products))
+
+# Save the DataFrame to a CSV file
+# merged_table_final_filtered_Products.to_csv(csv_file + 'merged_table_final_filtered_Products.csv', index=False)
+
+# Load DataFrame
+# merged_table_final_filtered_Products = pd.read_csv(csv_file + 'merged_table_final_filtered_Products_6month_lag.csv')
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Boxplot of each macro factor
+for column_name in merged_table_final_filtered_Products.columns[1:]:
+    if column_name != 'DATE':
+        plt.boxplot(merged_table_final_filtered_Products[column_name], labels=[column_name])
+        # Find and label the outliers with corresponding dates
+        outliers = merged_table_final_filtered_Products[merged_table_final_filtered_Products[column_name] > 1.5 * merged_table_final_filtered_Products[column_name].quantile(0.75)]
+        for i, value in outliers[column_name].iteritems():
+            outlier_date = merged_table_final_filtered_Products.loc[i, 'DATE']
+            plt.text(0.98, value, f"{value}", ha='right', va='center', color='red')
+            plt.text(1.02, value, f"({outlier_date})", ha='left', va='center', color='gray')
+        plt.title('Boxplot of ' + column_name)
+        plt.ylabel('Values')
+        plt.show()
+    
+# Selecting the columns for scatterplots, correlation heatmap, and correlation calculations
+columns_for_scatterplot = ['Semi_Price_Index', 'WPU03THRU15_Price_Index', 'WPU10_Price_Index', 'WPU1017_Price_Index']
+columns_for_correlation = ['Average_MSRP_spec', 'Semi_Price_Index', 'WPU03THRU15_Price_Index', 'WPU10_Price_Index', 'WPU1017_Price_Index']
+
+# Scatterplots
+for column in columns_for_scatterplot:
+    if column != 'DATE':
+        sns.scatterplot(data=merged_table_final_filtered_Products, x='Average_MSRP_spec', y=column)
+        plt.xlabel('Average_MSRP_spec')
+        plt.ylabel(column)
+        plt.title(f'Scatterplot: Average_MSRP_spec vs {column}')
+        plt.show()
+
+# Line plots of each column
+for column in merged_table_final_filtered_Products.columns:
+    if column != 'DATE':
+        plt.plot(merged_table_final_filtered_Products['DATE'], merged_table_final_filtered_Products[column], label=column)
+        plt.xlabel('DATE')
+        plt.ylabel(column)
+        plt.title(f'Line Plot of {column}')
+        x_values = merged_table_final_filtered_Products['DATE']
+        x_ticks = [x_values.iloc[0], *x_values.iloc[4::5], x_values.iloc[-1]]  # First, every second, and last x-axis label
+        plt.xticks(rotation=35, ha='right')
+        plt.xticks(x_ticks)
+        plt.tick_params(axis='x', labelsize=7)
+        plt.show()
+        
+# Correlation Heatmap
+correlation_data = merged_table_final_filtered_Products[columns_for_correlation]
+correlation_matrix = correlation_data.corr()
+# Plotting Pearson's Correlation Heatmap
+# The scores are between -1 and 1 for perfectly negatively correlated variables and perfectly positively 
+# correlated respectively
+sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm')
+plt.title("Pearson's Correlation Heatmap of Macro Factors and average MSRP")
+plt.show()
+
+# Pearson's Correlation table
+pearson_correlation = correlation_data.corr(method='pearson')
+pearson_table = pd.DataFrame(pearson_correlation, columns=columns_for_correlation, index=columns_for_correlation)
+print(pearson_table)
+
+# Plotting Spearman's Correlation Heatmap
+# As with the Pearson correlation coefficient, the scores are between -1 and 1
+spearman_correlation = correlation_data.corr(method='spearman')
+sns.heatmap(spearman_correlation, annot=True, cmap='coolwarm')
+plt.title("Spearman's Correlation Heatmap of Macro Factors and average MSRP")
+plt.show()
+
+# Spearman's Correlation table
+spearman_correlation = correlation_data.corr(method='spearman')
+spearman_table = pd.DataFrame(spearman_correlation, columns=columns_for_correlation, index=columns_for_correlation)
+print(spearman_table)
